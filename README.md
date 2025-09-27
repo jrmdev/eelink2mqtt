@@ -312,6 +312,35 @@ To configure the tracker to use your server, send the following SMS to it:
 
 `Server,"tcp://<your_server>:5064"#`
 
+## Systemd integration
+
+To run the server via systemd, create the file `/etc/systemd/system/eelink2mqtt.service` and add the following contents. Make sure to use the correct path to the script:
+
+```
+[Unit]
+Description=Eelink 2 MQTT
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/opt/homeassistant/config/eelink2mqtt.py
+WorkingDirectory=/opt/homeassistant/config
+Restart=always
+RestartSec=5
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Reload systemd and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable eelink2mqtt.service
+sudo systemctl start eelink2mqtt.service
+```
+
 ## Troubleshooting
 
 ### No Data Received
