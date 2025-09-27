@@ -34,7 +34,7 @@ git clone https://github.com/jrmdev/eelink2mqtt
 cd eelink2mqtt
 ```
 
-2. Edit the MQTT configuration in `eelink_server.py`:
+2. Edit the MQTT configuration in `eelink2mqtt.py`:
 ```python
 MQTT_BROKER = "127.0.0.1"  # Your MQTT broker IP
 MQTT_USER = "mosquitto"       # Your MQTT username
@@ -221,6 +221,10 @@ cards:
       - entity: sensor.tracker_co2
         name: CO2
 ```
+
+It may look like the following:
+<img width="1586" height="729" alt="image" src="https://github.com/user-attachments/assets/4ec9476e-869d-4ccf-95dd-813bcf8d8ec4" />
+
 
 ## Protocol Details
 
