@@ -165,61 +165,89 @@ mqtt:
 
 ### Dashboard Card
 
-Add this Lovelace card to your Home Assistant dashboard:
+Add these Lovelace cards to your Home Assistant dashboard:
 
 ```yaml
-type: vertical-stack
+type: grid
 cards:
-  - type: horizontal-stack
+  - type: vertical-stack
     cards:
-      - type: gauge
-        entity: sensor.tracker_battery
-        name: Battery
-        needle: true
-        min: 3
-        max: 4.2
-        severity:
-          green: 3.7
-          yellow: 3.5
-          red: 3.3
-      - type: sensor
-        entity: sensor.tracker_speed
-        name: Speed
-        icon: mdi:speedometer
-        graph: line
-      - type: sensor
-        entity: sensor.tracker_satellites
-        name: Satellites
-        icon: mdi:satellite-variant
-  - type: entities
-    title: Tracker Status
-    show_header_toggle: false
-    entities:
-      - entity: binary_sensor.tracker_gps_fixed
-        name: GPS Lock
-      - entity: sensor.tracker_last_gps_fix
-        name: Last Fix
-      - entity: binary_sensor.tracker_charging
-        name: Charging
-      - entity: binary_sensor.tracker_active
-        name: Motion
-      - entity: sensor.tracker_mileage
-        name: Mileage
-      - entity: sensor.tracker_course
-        name: Bearing
-        icon: mdi:compass
-  - type: glance
-    title: Environment
-    columns: 4
-    entities:
-      - entity: sensor.tracker_temperature
-        name: Temp
-      - entity: sensor.tracker_humidity
-        name: Humidity
-      - entity: sensor.tracker_illuminance
-        name: Light
-      - entity: sensor.tracker_co2
-        name: CO2
+      - type: map
+        entities:
+          - device_tracker.gps_tracker
+        hours_to_show: 24
+        default_zoom: 15
+```
+
+```yaml
+type: grid
+cards:
+  - type: vertical-stack
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.tracker_battery
+            name: Battery
+            needle: true
+            min: 3
+            max: 4.2
+            severity:
+              green: 3.7
+              yellow: 3.5
+              red: 3.3
+          - type: sensor
+            entity: sensor.tracker_speed
+            name: Speed
+            icon: mdi:speedometer
+            graph: line
+          - type: sensor
+            entity: sensor.tracker_satellites
+            name: Satellites
+            icon: mdi:satellite-variant
+      - type: entities
+        title: Tracker Status
+        show_header_toggle: false
+        entities:
+          - entity: binary_sensor.tracker_gps_fixed
+            name: GPS Lock
+          - entity: sensor.tracker_last_gps_fix
+            name: Last Fix
+          - entity: binary_sensor.tracker_charging
+            name: Charging
+          - entity: binary_sensor.tracker_active
+            name: Motion
+          - entity: sensor.tracker_mileage
+            name: Mileage
+          - entity: sensor.tracker_course
+            name: Bearing
+            icon: mdi:compass
+      - type: glance
+        title: Environment
+        columns: 4
+        entities:
+          - entity: sensor.tracker_temperature
+            name: Temp
+          - entity: sensor.tracker_humidity
+            name: Humidity
+          - entity: sensor.tracker_illuminance
+            name: Light
+          - entity: sensor.tracker_co2
+            name: CO2
+```
+
+```yaml
+type: grid
+cards:
+  - type: vertical-stack
+    cards:
+      - type: history-graph
+        title: Movement History
+        hours_to_show: 24
+        entities:
+          - entity: sensor.tracker_speed
+          - entity: sensor.tracker_altitude
+
 ```
 
 It may look like the following:
