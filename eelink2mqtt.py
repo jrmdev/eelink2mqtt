@@ -26,7 +26,7 @@ class EelinkV2Server:
     MQTT_USER = "mosquitto"
     MQTT_PASS = "mosquitto"
     MQTT_TOPIC_PREFIX = "eelink"
-
+    
     def __init__(self, host: str = '0.0.0.0', port: int = 5064, verbose: bool=False):
         self.host = host
         self.port = port
@@ -178,13 +178,13 @@ class EelinkV2Server:
         if device_imei:
             self._publish_mqtt(device_imei, {
                 "status": status,
-                "timestamp": datetime.now().isoformat()
+                "heartbeat_time":  datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
         
         response = struct.pack('>BBBHH', self.HEADER_MARK1, self.HEADER_MARK2, self.CMD_HEARTBEAT, 2, seq)
         client_socket.send(response)
         self._log(f"HEARTBEAT ACK sent: {response.hex()}")
-    
+
     def _handle_location(self, client_socket: socket.socket, packet: bytes, device_imei: Optional[str]):
         """Handle GPS location data packet."""
         self._log("Handling LOCATION DATA packet")
@@ -219,11 +219,11 @@ class EelinkV2Server:
             self._log(f"Altitude: {position.get('altitude_m')} m, Speed: {position.get('speed_kmh')} km/h")
             self._log(f"Battery: {battery} V, Temperature: {temperature} °C")
             self._parse_status(status)
-            
+
             # Publish to MQTT
             if device_imei:
                 mqtt_data = {
-                    "timestamp": position.get('date'),
+                    "gpsfix_time": position.get('date'),
                     "latitude": position.get('latitude'),
                     "longitude": position.get('longitude'),
                     "altitude": position.get('altitude_m'),
@@ -369,11 +369,9 @@ class EelinkV2Server:
 def main():
     parser = argparse.ArgumentParser(description="EelinkV2Server runner")
     parser.add_argument('-v', '--verbose', action='store_true', help='Print all debug information to the console')
-    parser.add_argument('-H', '--host', action='store', help='Server host address', default='0.0.0.0')
-    parser.add_argument('-p', '--port', action='store', help='Server port number', default=5064)
     args = parser.parse_args()
 
-    server = EelinkV2Server(port=args.ports, verbose=args.verbose)
+    server = EelinkV2Server(verbose=args.verbose)
     try:
         server.start_server()
     except KeyboardInterrupt:
