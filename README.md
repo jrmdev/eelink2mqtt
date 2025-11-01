@@ -4,12 +4,12 @@ A Python server implementation for the Eelink V2.0 protocol that receives GPS tr
 
 ## Features
 
-- 🛰️ **GPS Location Tracking** - Real-time latitude, longitude, altitude, speed, and course
-- 🔋 **Device Monitoring** - Battery voltage, charging status, and device activity
-- 🌡️ **Environmental Sensors** - Temperature, humidity, illuminance, and CO2 levels
-- 📱 **Device Status** - GPS fix status, motion detection, and I/O pin states
-- 🏠 **Home Assistant Integration** - MQTT autodiscovery and dashboard cards
-- 📊 **Comprehensive Telemetry** - Mileage tracking, step counting, and cellular info
+- **GPS Location Tracking** - Real-time latitude, longitude, altitude, speed, and course
+- **Device Monitoring** - Battery voltage, charging status, and device activity
+- **Environmental Sensors** - Temperature, humidity, illuminance, and CO2 levels
+- **Device Status** - GPS fix status, motion detection, and I/O pin states
+- **Home Assistant Integration** - MQTT autodiscovery and dashboard cards
+- **Comprehensive Telemetry** - Mileage tracking, step counting, and cellular info
 
 ## Supported Devices
 
@@ -60,81 +60,158 @@ mqtt:
     # Last Fix
     - name: "Tracker Last GPS Fix"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.timestamp }}"
+      # Only update if 'gpsfix_time' is present in the message
+      value_template: >
+        {% if value_json.gpsfix_time is defined %}
+          {{ value_json.gpsfix_time }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       icon: mdi:clock
+
+    # Last Heartbeat
+    - name: "Tracker Last Heartbeat"
+      state_topic: "eelink/<DEVICE_IMEI>/state"
+      # Only update if 'heartbeat_time' is present in the message
+      value_template: >
+        {% if value_json.heartbeat_time is defined %}
+          {{ value_json.heartbeat_time }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
+      icon: mdi:clock
+
     # Battery
     - name: "Tracker Battery"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.battery }}"
+      value_template: >
+        {% if value_json.battery is defined %}
+          {{ value_json.battery }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "V"
       device_class: voltage
       icon: mdi:battery
-
+      
     # Temperature
     - name: "Tracker Temperature"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.temperature }}"
+      value_template: >
+        {% if value_json.temperature is defined %}
+          {{ value_json.temperature }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "°C"
       device_class: temperature
-
+      
     # Humidity
     - name: "Tracker Humidity"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.humidity }}"
+      value_template: >
+        {% if value_json.humidity is defined %}
+          {{ value_json.humidity }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "%"
       device_class: humidity
-
+      
     # Speed
     - name: "Tracker Speed"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.speed }}"
+      value_template: >
+        {% if value_json.speed is defined %}
+          {{ value_json.speed }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "km/h"
       icon: mdi:speedometer
-
+      
     # Altitude
     - name: "Tracker Altitude"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.altitude }}"
+      value_template: >
+        {% if value_json.altitude is defined %}
+          {{ value_json.altitude }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "m"
       icon: mdi:elevation-rise
-
+      
     # Mileage
     - name: "Tracker Mileage"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.mileage }}"
+      value_template: >
+        {% if value_json.mileage is defined %}
+          {{ value_json.mileage }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "km"
       icon: mdi:counter
+
     # Course
     - name: "Tracker Course"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.course }}"
+      value_template: >
+        {% if value_json.course is defined %}
+          {{ value_json.course }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "deg"
       icon: mdi:sign-direction
+
     # Steps
     - name: "Tracker Steps"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.steps }}"
+      value_template: >
+        {% if value_json.steps is defined %}
+          {{ value_json.steps }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       icon: mdi:walk
-
+      
     # Satellites
     - name: "Tracker Satellites"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.satellites }}"
+      value_template: >
+        {% if value_json.satellites is defined %}
+          {{ value_json.satellites }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       icon: mdi:satellite-variant
-
+      
     # CO2
     - name: "Tracker CO2"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.co2 }}"
+      value_template: >
+        {% if value_json.co2 is defined %}
+          {{ value_json.co2 }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "ppm"
       device_class: carbon_dioxide
-
+      
     # Illuminance
     - name: "Tracker Illuminance"
       state_topic: "eelink/<DEVICE_IMEI>/state"
-      value_template: "{{ value_json.illuminance }}"
+      value_template: >
+        {% if value_json.illuminance is defined %}
+          {{ value_json.illuminance }}
+        {% else %}
+          {{ this.state }}
+        {% endif %}
       unit_of_measurement: "lx"
       device_class: illuminance
+
   device_tracker:
     - name: "GPS Tracker"
       state_topic: "eelink/<DEVICE_IMEI>/state"
@@ -143,6 +220,7 @@ mqtt:
       payload_home: "home"
       payload_not_home: "not_home"
       source_type: gps
+
   binary_sensor:
     # GPS Fix Status
     - name: "Tracker GPS Fixed"
@@ -180,60 +258,46 @@ cards:
 ```
 
 ```yaml
-type: grid
+type: vertical-stack
 cards:
-  - type: vertical-stack
+  - type: horizontal-stack
     cards:
-      - type: horizontal-stack
-        cards:
-          - type: gauge
-            entity: sensor.tracker_battery
-            name: Battery
-            needle: true
-            min: 3
-            max: 4.2
-            severity:
-              green: 3.7
-              yellow: 3.5
-              red: 3.3
-          - type: sensor
-            entity: sensor.tracker_speed
-            name: Speed
-            icon: mdi:speedometer
-            graph: line
-          - type: sensor
-            entity: sensor.tracker_satellites
-            name: Satellites
-            icon: mdi:satellite-variant
-      - type: entities
-        title: Tracker Status
-        show_header_toggle: false
-        entities:
-          - entity: binary_sensor.tracker_gps_fixed
-            name: GPS Lock
-          - entity: sensor.tracker_last_gps_fix
-            name: Last Fix
-          - entity: binary_sensor.tracker_charging
-            name: Charging
-          - entity: binary_sensor.tracker_active
-            name: Motion
-          - entity: sensor.tracker_mileage
-            name: Mileage
-          - entity: sensor.tracker_course
-            name: Bearing
-            icon: mdi:compass
-      - type: glance
-        title: Environment
-        columns: 4
-        entities:
-          - entity: sensor.tracker_temperature
-            name: Temp
-          - entity: sensor.tracker_humidity
-            name: Humidity
-          - entity: sensor.tracker_illuminance
-            name: Light
-          - entity: sensor.tracker_co2
-            name: CO2
+      - type: sensor
+        entity: sensor.tracker_speed
+        name: Speed
+        icon: mdi:speedometer
+        graph: line
+      - type: sensor
+        entity: sensor.tracker_satellites
+        name: Satellites
+        icon: mdi:satellite-variant
+      - type: gauge
+        entity: sensor.tracker_battery
+        name: Battery
+        needle: true
+        min: 3
+        max: 4.2
+        severity:
+          green: 3.7
+          yellow: 3.5
+          red: 3.3
+  - type: entities
+    title: Tracker Status
+    show_header_toggle: false
+    entities:
+      - entity: binary_sensor.tracker_gps_fixed
+        name: GPS Lock
+      - entity: sensor.tracker_last_gps_fix
+        name: Last Fix
+      - entity: sensor.tracker_last_heartbeat
+        name: Last Heartbeat
+      - entity: binary_sensor.tracker_active
+        name: Motion
+      - entity: sensor.tracker_mileage
+        name: Mileage
+      - entity: sensor.tracker_course
+        name: Bearing
+        icon: mdi:compass
 ```
 
 ```yaml
