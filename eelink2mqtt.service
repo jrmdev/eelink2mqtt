@@ -1,0 +1,14 @@
+[Unit]
+Description=Eelink 2 MQTT
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/opt/eelink2mqtt/eelink2mqtt.py
+WorkingDirectory=/opt/eelink2mqtt
+Restart=always
+RestartSec=5
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
