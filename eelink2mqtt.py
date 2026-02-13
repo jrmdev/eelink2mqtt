@@ -5,6 +5,7 @@ import threading
 import time
 import json
 import argparse
+import requests
 from datetime import datetime
 from typing import Dict, Optional, Tuple
 import paho.mqtt.client as mqtt
@@ -21,21 +22,24 @@ class EelinkV2Server:
     CMD_LOCATION = 0x12
     
     # MQTT configuration
-    MQTT_BROKER = "127.0.0.1"
+    MQTT_BROKER = "192.168.1.50"
     MQTT_PORT = 1883
     MQTT_USER = "mosquitto"
     MQTT_PASS = "mosquitto"
     MQTT_TOPIC_PREFIX = "eelink"
+
+    # Options
+    USE_APPROX_LOCATION = False # Set to true to fetch and use Cell Tower location if GPS location is missing from data packet
+    DEBUG_LEVEL = 1 # 0 = Minimal, 1 = Normal, 2 = Verbose
     
-    def __init__(self, host: str = '0.0.0.0', port: int = 5064, verbose: bool=False):
+    def __init__(self, host: str = '0.0.0.0', port: int = 5064):
         self.host = host
         self.port = port
-        self.verbose = verbose
         self.server_socket = None
         self.running = False
         self.mqtt_client = None
         self._setup_mqtt()
-    
+
     def _setup_mqtt(self):
         """Initialize MQTT client connection."""
         self.mqtt_client = mqtt.Client()
@@ -44,9 +48,9 @@ class EelinkV2Server:
         try:
             self.mqtt_client.connect(self.MQTT_BROKER, self.MQTT_PORT, 60)
             self.mqtt_client.loop_start()
-            self._log("MQTT client connected successfully")
+            self._log("MQTT client connected successfully", 1)
         except Exception as e:
-            self._log(f"MQTT connection failed: {e}")
+            self._log(f"MQTT connection failed: {e}", 0)
     
     def _publish_mqtt(self, device_id: str, data: Dict):
         """Publish data to MQTT broker for Home Assistant."""
@@ -58,14 +62,14 @@ class EelinkV2Server:
             topic = f"{self.MQTT_TOPIC_PREFIX}/{device_id}/state"
             payload = json.dumps(data)
             self.mqtt_client.publish(topic, payload, retain=True)
-            self._log(f"Published to MQTT: {topic}")
+            self._log(f"Published to MQTT: {topic}", 2)
         except Exception as e:
-            self._log(f"MQTT publish error: {e}")
+            self._log(f"MQTT publish error: {e}", 1)
     
-    def _log(self, message: str):
+    def _log(self, message: str, level: int = 1):
         """Print timestamped log message."""
-        if self.verbose:
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+        if level <= self.DEBUG_LEVEL:
+            print(f"[{datetime.now().strftime('%d/%m/%Y %H:%M')}] {message}")
     
     def start_server(self):
         """Start the server to listen for connections."""
@@ -80,7 +84,7 @@ class EelinkV2Server:
         try:
             while self.running:
                 client_socket, client_address = self.server_socket.accept()
-                self._log(f"New connection from: {client_address}")
+                self._log(f"New connection from: {client_address}", 1)
                 
                 thread = threading.Thread(
                     target=self._handle_client,
@@ -89,34 +93,43 @@ class EelinkV2Server:
                 )
                 thread.start()
         except Exception as e:
-            self._log(f"Server error: {e}")
+            self._log(f"Server error: {e}", 0)
         finally:
             self.stop_server()
     
     def _handle_client(self, client_socket: socket.socket, client_address: Tuple):
         """Handle all communication with a connected client."""
         device_imei = None
-        
+
         try:
             while self.running:
                 data = client_socket.recv(1024)
                 if not data:
-                    self._log(f"Connection closed by {client_address}")
+                    self._log(f"Connection closed by {client_address}", 1)
                     break
-                
-                self._log(f"Received from {client_address}: {data.hex()}")
+
+                self._log(f"Received from {client_address}: {data.hex()}", 1)
                 device_imei = self._process_packet(client_socket, data, device_imei)
-                
+
+        except ConnectionResetError:
+            # Normal behavior - client closed connection after receiving ACK
+            self._log(f"Client {client_address} disconnected", 1)
+        except BrokenPipeError:
+            # Client disconnected while we were sending
+            self._log(f"Client {client_address} disconnected during transmission", 1)
         except Exception as e:
-            self._log(f"Error handling client {client_address}: {e}")
+            self._log(f"Error handling client {client_address}: {e}", 0)
         finally:
-            client_socket.close()
-            self._log(f"Disconnected from {client_address}")
+            try:
+                client_socket.close()
+            except:
+                pass
+            self._log(f"Session ended for {client_address}", 1)
     
     def _process_packet(self, client_socket: socket.socket, packet: bytes, device_imei: Optional[str]) -> Optional[str]:
         """Process packet and return device IMEI if available."""
         if len(packet) < 9 or packet[0] != self.HEADER_MARK1 or packet[1] != self.HEADER_MARK2:
-            self._log("Invalid packet header or too short. Discarding.")
+            self._log("Invalid packet header or too short. Discarding.", 0)
             return device_imei
         
         cmd = packet[2]
@@ -129,25 +142,25 @@ class EelinkV2Server:
             elif cmd == self.CMD_LOCATION:
                 self._handle_location(client_socket, packet, device_imei)
             else:
-                self._log(f"Unsupported command 0x{cmd:02x}. Sending generic ACK.")
+                self._log(f"Unsupported command 0x{cmd:02x}. Sending generic ACK.", 0)
                 self._send_ack(client_socket, packet)
         except Exception as e:
-            self._log(f"Error processing packet: {e}")
+            self._log(f"Error processing packet: {e}", 0)
         
         return device_imei
     
     def _handle_login(self, client_socket: socket.socket, packet: bytes) -> str:
         """Handle device login packet."""
-        self._log("Handling LOGIN packet")
+        self._log("Handling LOGIN packet", 1)
         
         if len(packet) < 20:
-            self._log("Login packet too short")
+            self._log("Login packet too short", 0)
             return None
         
         imei = hex(int.from_bytes(packet[7:15], 'big'))[2:]
         seq = int.from_bytes(packet[5:7], 'big')
         
-        self._log(f"Device IMEI: {imei}, Seq: {seq}")
+        self._log(f"Device IMEI: {imei}, Seq: {seq}", 1)
         
         response = struct.pack(
             '>BBBHHIHB',
@@ -161,94 +174,139 @@ class EelinkV2Server:
         )
         
         client_socket.send(response)
-        self._log(f"LOGIN ACK sent: {response.hex()}")
+        self._log(f"LOGIN ACK sent: {response.hex()}", 1)
         
         return str(imei)
     
     def _handle_heartbeat(self, client_socket: socket.socket, packet: bytes, device_imei: Optional[str]):
         """Handle heartbeat packet."""
-        self._log("Handling HEARTBEAT packet")
+        self._log("Handling HEARTBEAT packet", 1)
         
         seq = int.from_bytes(packet[5:7], 'big')
         status = int.from_bytes(packet[7:9], 'big')
         
-        self._log(f"Seq: {seq}, Status: 0x{status:04X}")
+        self._log(f"Seq: {seq}, Status: 0x{status:04X}", 1)
         self._parse_status(status)
         
         if device_imei:
             self._publish_mqtt(device_imei, {
                 "status": status,
-                "heartbeat_time":  datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "heartbeat_time":  datetime.now().strftime("%d/%m/%Y %H:%M")
             })
         
         response = struct.pack('>BBBHH', self.HEADER_MARK1, self.HEADER_MARK2, self.CMD_HEARTBEAT, 2, seq)
         client_socket.send(response)
-        self._log(f"HEARTBEAT ACK sent: {response.hex()}")
+        self._log(f"HEARTBEAT ACK sent: {response.hex()}", 1)
 
     def _handle_location(self, client_socket: socket.socket, packet: bytes, device_imei: Optional[str]):
         """Handle GPS location data packet."""
-        self._log("Handling LOCATION DATA packet")
-        
-        chunks = [packet[i:i+74] for i in range(0, len(packet), 74)]
-        
-        for chunk in chunks:
-            seq = int.from_bytes(chunk[5:7], 'big')
-            data_section = chunk[7:]
-            
-            position, offset = self._parse_position(data_section)
-            
-            # Parse additional data
-            status = int.from_bytes(data_section[offset:offset+2], 'big')
-            battery = int.from_bytes(data_section[offset+2:offset+4], 'big') / 1000.0
-            ain0 = int.from_bytes(data_section[offset+4:offset+6], 'big')
-            ain1 = int.from_bytes(data_section[offset+6:offset+8], 'big')
-            mileage = int.from_bytes(data_section[offset+8:offset+12], 'big') / 1000.0
-            gsm_cntr = int.from_bytes(data_section[offset+12:offset+14], 'big')
-            gps_cntr = int.from_bytes(data_section[offset+14:offset+16], 'big')
-            pdm_step = int.from_bytes(data_section[offset+16:offset+18], 'big')
-            pdm_time = int.from_bytes(data_section[offset+18:offset+20], 'big')
-            temperature = int.from_bytes(data_section[offset+20:offset+22], 'big') / 256.0
-            humidity = int.from_bytes(data_section[offset+22:offset+24], 'big')
-            illuminance = int.from_bytes(data_section[offset+24:offset+28], 'big')
-            co2 = int.from_bytes(data_section[offset+28:offset+32], 'big')
-            
-            # Log data
-            self._log(f"Seq: {seq}")
-            self._log(f"Date: {position.get('date')}")
-            self._log(f"Location: {position.get('latitude')}, {position.get('longitude')}")
-            self._log(f"Altitude: {position.get('altitude_m')} m, Speed: {position.get('speed_kmh')} km/h")
-            self._log(f"Battery: {battery} V, Temperature: {temperature} °C")
-            self._parse_status(status)
+        self._log("Handling LOCATION DATA packet", 1)
 
-            # Publish to MQTT
-            if device_imei:
-                mqtt_data = {
-                    "gpsfix_time": position.get('date'),
-                    "latitude": position.get('latitude'),
-                    "longitude": position.get('longitude'),
-                    "altitude": position.get('altitude_m'),
-                    "speed": position.get('speed_kmh'),
-                    "course": position.get('course_deg'),
-                    "satellites": position.get('satellites'),
-                    "battery": battery,
-                    "temperature": temperature,
-                    "humidity": humidity,
-                    "illuminance": illuminance,
-                    "co2": co2,
-                    "mileage": mileage,
-                    "steps": pdm_step,
-                    "status": status,
-                    "ain0": ain0,
-                    "ain1": ain1,
-                    "cell_info": position.get('bsid0')
-                }
-                self._publish_mqtt(device_imei, mqtt_data)
-            
-            # Send ACK
-            response = struct.pack('>BBBHH', self.HEADER_MARK1, self.HEADER_MARK2, self.CMD_LOCATION, 2, seq)
-            client_socket.send(response)
-            self._log(f"LOCATION ACK sent: {response.hex()}")
-            self._log("-" * 50)
+        # Split concatenated packets by finding packet boundaries (67 67 12)
+        packets = []
+        i = 0
+        while i < len(packet):
+            # Look for packet header
+            if i + 7 <= len(packet) and packet[i:i+3] == bytes([0x67, 0x67, 0x12]):
+                # Read packet size (bytes 3-4, big-endian unsigned 16-bit)
+                pkt_size = int.from_bytes(packet[i+3:i+5], 'big')
+                # Total packet length = header (5 bytes) + size field value
+                total_length = 5 + pkt_size
+
+                if i + total_length <= len(packet):
+                    packets.append(packet[i:i+total_length])
+                    i += total_length
+                else:
+                    self._log(f"Incomplete packet at offset {i}, skipping", 1)
+                    break
+            else:
+                self._log(f"No valid packet header found at offset {i}, skipping remaining data", 1)
+                break
+
+        # Process each packet
+        for pkt in packets:
+            try:
+                seq = int.from_bytes(pkt[5:7], 'big')
+                data_section = pkt[7:]
+
+                position, offset = self._parse_position(data_section)
+
+                # Check if we have enough data for the additional fields
+                if len(data_section) < offset + 32:
+                    self._log(f"Insufficient data after position (have {len(data_section)}, need {offset + 32})", 1)
+                    continue
+
+                # Parse additional data
+                status = int.from_bytes(data_section[offset:offset+2], 'big')
+                battery = int.from_bytes(data_section[offset+2:offset+4], 'big') / 1000.0
+                ain0 = int.from_bytes(data_section[offset+4:offset+6], 'big')
+                ain1 = int.from_bytes(data_section[offset+6:offset+8], 'big')
+                mileage = int.from_bytes(data_section[offset+8:offset+12], 'big') / 1000.0
+                gsm_cntr = int.from_bytes(data_section[offset+12:offset+14], 'big')
+                gps_cntr = int.from_bytes(data_section[offset+14:offset+16], 'big')
+                pdm_step = int.from_bytes(data_section[offset+16:offset+18], 'big')
+                pdm_time = int.from_bytes(data_section[offset+18:offset+20], 'big')
+                temperature = int.from_bytes(data_section[offset+20:offset+22], 'big') / 256.0
+                humidity = int.from_bytes(data_section[offset+22:offset+24], 'big')
+                illuminance = int.from_bytes(data_section[offset+24:offset+28], 'big')
+                co2 = int.from_bytes(data_section[offset+28:offset+32], 'big')
+
+                # Log data
+                self._log(f"Seq: {seq}", 2)
+                self._log(f"Date: {position.get('date')}", 2)
+                self._log(f"Location: {position.get('latitude')}, {position.get('longitude')}", 2)
+                self._log(f"Altitude: {position.get('altitude_m')} m, Speed: {position.get('speed_kmh')} km/h", 2)
+                self._log(f"Battery: {battery} V, Temperature: {temperature} °C", 2)
+                self._parse_status(status)
+
+                # Publish to MQTT
+                if device_imei:
+
+                    if not position.get("latitude") and not position.get("longitude") and position.get("bsid0") and self.USE_APPROX_LOCATION:
+                        # GPS was not on, we get approx location using cell tower data
+                        self._log(f"GPS was not ON, fetching cell tower data", 1)
+                        cell_info = position.get('bsid0')
+                        res = requests.get(f"https://opencellid.org/ajax/searchCell.php?mcc={cell_info['mcc']}&mnc={cell_info['mnc']}&lac={cell_info['lac']}&cell_id={cell_info['cid']}").json()
+
+                        if res.get("lat") and res.get("lon"):
+                            position['latitude'] = res.get("lat")
+                            position['longitude'] = res.get("lon")
+                            position['fix_source'] = 'cell'
+
+                    mqtt_data = {
+                        "gpsfix_time": position.get('date'),
+                        "latitude": position.get('latitude'),
+                        "longitude": position.get('longitude'),
+                        "altitude": position.get('altitude_m'),
+                        "speed": position.get('speed_kmh'),
+                        "course": position.get('course_deg'),
+                        "satellites": position.get('satellites'),
+                        "fix_source": position.get('fix_source'),
+                        "battery": battery,
+                        "temperature": temperature,
+                        "humidity": humidity,
+                        "illuminance": illuminance,
+                        "co2": co2,
+                        "mileage": mileage,
+                        "steps": pdm_step,
+                        "status": status,
+                        "ain0": ain0,
+                        "ain1": ain1,
+                        "cell_info": position.get("bsid0"),
+                        "heartbeat_time":  datetime.now().strftime("%d/%m/%Y %H:%M")
+                    }
+
+                    self._log(f"MQTT Publish: {mqtt_data}", 1)
+                    self._publish_mqtt(device_imei, mqtt_data)
+
+                # Send ACK
+                response = struct.pack('>BBBHH', self.HEADER_MARK1, self.HEADER_MARK2, self.CMD_LOCATION, 2, seq)
+                client_socket.send(response)
+                self._log(f"LOCATION ACK sent: {response.hex()}", 1)
+                self._log("-" * 50, 1)
+            except Exception as e:
+                self._log(f"Error processing location packet: {e}", 0)
+                continue
     
     def _parse_position(self, data: bytes) -> Tuple[Dict, int]:
         """Parse POSITION structure from bytes."""
@@ -259,12 +317,20 @@ class EelinkV2Server:
         timestamp = struct.unpack_from(">I", data, offset)[0]
         offset += 4
         position["time"] = timestamp
-        position["date"] = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-        
+        position["date"] = datetime.fromtimestamp(timestamp).strftime("%d/%m/%Y %H:%M")
+
+        # Defaults
+        # position["latitude"] = 0
+        # position["longitude"] = 0
+        # position["altitude_m"] = 0
+        # position["speed_kmh"] = 0
+        # position["course_deg"] = 0
+        # position["satellites"] = 0
+
         # Mask (1 byte)
         mask = struct.unpack_from(">B", data, offset)[0]
         offset += 1
-        
+
         # GPS data (bit 0)
         if mask & 0x01:
             lat, lon, alt, speed, course, sats = struct.unpack_from(">iiHHHB", data, offset)
@@ -275,6 +341,7 @@ class EelinkV2Server:
             position["speed_kmh"] = speed
             position["course_deg"] = course
             position["satellites"] = sats
+            position['fix_source'] = 'gps'
         
         # BSID0 (bit 1)
         if mask & 0x02:
@@ -315,6 +382,7 @@ class EelinkV2Server:
             offset += 7
             position["bss2"] = {"bssid": ":".join(f"{b:02x}" for b in bssid), "rssi": rssi}
         
+        self._log(f"Position data: {position}", 0)
         return position, offset
     
     def _parse_status(self, status: int):
@@ -340,17 +408,17 @@ class EelinkV2Server:
             15: ("DIN3 HIGH", "DIN3 LOW"),
         }
         
-        self._log(f"Device status: 0x{status:04X}")
+        self._log(f"Device status: 0x{status:04X}", 2)
         for bit, (high_msg, low_msg) in status_bits.items():
             msg = high_msg if status & (1 << bit) else low_msg
-            self._log(f"  Bit {bit}: {msg}")
+            self._log(f"  Bit {bit}: {msg}", 2)
     
     def _send_ack(self, client_socket: socket.socket, packet: bytes):
         """Send generic acknowledgment."""
         seq = int.from_bytes(packet[5:7], 'big')
         response = struct.pack('>BBBHH', self.HEADER_MARK1, self.HEADER_MARK2, packet[2], 2, seq)
         client_socket.send(response)
-        self._log(f"Generic ACK sent: {response.hex()}")
+        self._log(f"Generic ACK sent: {response.hex()}", 1)
     
     def stop_server(self):
         """Stop the server gracefully."""
@@ -363,15 +431,14 @@ class EelinkV2Server:
         if self.server_socket:
             self.server_socket.close()
         
-        self._log("Server stopped")
+        self._log("Server stopped", 1)
 
 
 def main():
     parser = argparse.ArgumentParser(description="EelinkV2Server runner")
-    parser.add_argument('-v', '--verbose', action='store_true', help='Print all debug information to the console')
     args = parser.parse_args()
 
-    server = EelinkV2Server(verbose=args.verbose)
+    server = EelinkV2Server()
     try:
         server.start_server()
     except KeyboardInterrupt:
